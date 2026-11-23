@@ -47,6 +47,7 @@ export default [
     route("settings", "routes/settings.tsx"),
     route("team", "routes/team.tsx"),
     route("redeem/:code", "routes/redeem.$code.tsx"),
+    route("notifications", "routes/prototype.notifications.tsx"), // PROTOTYPE #60
   ]),
   route("signup", "routes/signup.tsx"),
   route("login", "routes/login.tsx"),
@@ -54,4 +55,5 @@ export default [
   route("api/logout", "routes/api.logout.ts"),
   route("api/video-tracking", "routes/api.video-tracking.ts"),
   route("api/set-dev-country", "routes/api.set-dev-country.ts"),
+  route("api/prototype-notify", "routes/api.prototype-notify.ts"), // PROTOTYPE #60
 ] satisfies RouteConfig;
