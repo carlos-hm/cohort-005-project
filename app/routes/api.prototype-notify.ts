@@ -7,7 +7,14 @@ import { KINDS, sendPrototypeNotification, type Kind } from "~/lib/prototype-not
 export async function action({ request }: Route.ActionArgs) {
   const userId = await getCurrentUserId(request);
   if (!userId) throw data("Select a user from the DevUI panel.", { status: 401 });
-  const kind = String((await request.formData()).get("kind")) as Kind;
+  const form = await request.formData();
+  const count = Number(form.get("count") ?? 1);
+  if (count > 1) {
+    // Bulk: a mix of catalogue kinds, sent one after another.
+    for (let i = 0; i < count; i++) await sendPrototypeNotification(KINDS[i % KINDS.length], userId);
+    return { sent: count };
+  }
+  const kind = String(form.get("kind")) as Kind;
   if (!KINDS.includes(kind)) throw data("unknown kind", { status: 400 });
   return sendPrototypeNotification(kind, userId);
 }

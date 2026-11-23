@@ -15,6 +15,7 @@ import {
   MessageSquare,
   Receipt,
   UserPlus,
+  Trash2,
   UsersRound,
   X,
 } from "lucide-react";
@@ -43,6 +44,8 @@ function useKnockFeed(config: FeedConfig | null) {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [meta, setMeta] = useState<Meta>({ unread_count: 0, unseen_count: 0, total_count: 0 });
   const [log, setLog] = useState<string[]>([]);
+  const [after, setAfter] = useState<string | null>(null); // Knock cursor for the next (older) page
+  const [loadingMore, setLoadingMore] = useState(false);
   const note = (s: string) => setLog((l) => [`${new Date().toLocaleTimeString()} ${s}`, ...l].slice(0, 6));
 
   const headers = useMemo(
@@ -55,17 +58,48 @@ function useKnockFeed(config: FeedConfig | null) {
     [config]
   );
 
+  const PAGE_SIZE = 10; // small on purpose so pagination is visible in the prototype
+  const fetchPage = useCallback(
+    async (cursor?: string) => {
+      const q = new URLSearchParams({ page_size: String(PAGE_SIZE) });
+      if (cursor) q.set("after", cursor);
+      const res = await fetch(
+        `https://api.knock.app/v1/users/${config!.knockUserId}/feeds/${config!.feedChannelId}?${q}`,
+        { headers: headers! }
+      );
+      if (!res.ok) {
+        note(`GET feed → ${res.status}`);
+        return null;
+      }
+      return res.json();
+    },
+    [config, headers]
+  );
+
+  // Poll the newest page and merge it into what's loaded, so older pages survive a refresh.
   const refresh = useCallback(async () => {
     if (!config || !headers) return;
-    const res = await fetch(
-      `https://api.knock.app/v1/users/${config.knockUserId}/feeds/${config.feedChannelId}?page_size=30`,
-      { headers }
-    );
-    if (!res.ok) return note(`GET feed → ${res.status}`);
-    const body = await res.json();
-    setEntries(body.entries);
+    const body = await fetchPage();
+    if (!body) return;
     setMeta(body.meta);
-  }, [config, headers]);
+    setEntries((old) => {
+      const fresh = new Map(body.entries.map((e: Entry) => [e.id, e]));
+      const older = old.filter((e) => !fresh.has(e.id) && e.inserted_at < body.entries.at(-1)?.inserted_at);
+      if (old.length === 0) setAfter(body.page_info?.after ?? null);
+      return [...body.entries, ...older];
+    });
+  }, [config, headers, fetchPage]);
+
+  const loadMore = useCallback(async () => {
+    if (!after || loadingMore) return;
+    setLoadingMore(true);
+    const body = await fetchPage(after);
+    setLoadingMore(false);
+    if (!body) return;
+    note(`loaded ${body.entries.length} older`);
+    setAfter(body.page_info?.after ?? null);
+    setEntries((old) => [...old, ...body.entries.filter((e: Entry) => !old.some((o) => o.id === e.id))]);
+  }, [after, loadingMore, fetchPage]);
 
   const mark = useCallback(
     async (status: "seen" | "read" | "unread" | "archived", ids: string[]) => {
@@ -76,6 +110,17 @@ function useKnockFeed(config: FeedConfig | null) {
         body: JSON.stringify({ message_ids: ids }),
       });
       note(`mark ${status} ×${ids.length} → ${res.status}`);
+      const now = new Date().toISOString();
+      setEntries((old) =>
+        status === "archived"
+          ? old.filter((e) => !ids.includes(e.id))
+          : old.map((e) =>
+              !ids.includes(e.id) ? e
+              : status === "seen" ? { ...e, seen_at: now }
+              : status === "read" ? { ...e, read_at: now, seen_at: e.seen_at ?? now }
+              : { ...e, read_at: null }
+            )
+      );
       await refresh();
     },
     [headers, refresh]
@@ -83,6 +128,7 @@ function useKnockFeed(config: FeedConfig | null) {
 
   useEffect(() => {
     setEntries([]);
+    setAfter(null);
     refresh();
     const t = setInterval(refresh, 8000); // prototype: polling, not Knock's realtime socket
     return () => clearInterval(t);
@@ -93,6 +139,9 @@ function useKnockFeed(config: FeedConfig | null) {
     meta,
     log,
     refresh,
+    loadMore,
+    hasMore: !!after,
+    loadingMore,
     markSeen: () => mark("seen", entries.filter((e) => !e.seen_at).map((e) => e.id)),
     markRead: (e: Entry) => mark("read", [e.id]),
     markUnread: (e: Entry) => mark("unread", [e.id]),
@@ -222,19 +271,19 @@ function VariantAHeader() {
                       <button onClick={() => setSelectedId(null)} className="flex items-center gap-1 rounded px-1 py-1 text-sm text-muted-foreground hover:bg-accent hover:text-foreground">
                         <ChevronLeft className="size-4" /> Notifications
                       </button>
-                      <button onClick={() => dismiss(selected)} title="Dismiss" className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground">
-                        <X className="size-4" />
-                      </button>
                     </div>
                     <div className="p-4">
                       <div className="flex items-center gap-3">
                         <Initial name={d.actor} />
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                           <div className="text-sm font-medium">{d.actor ?? "Cadence"}</div>
                           <div className="flex items-center gap-1 text-xs text-muted-foreground">
                             <Icon className="size-3" /> {d.group} · {ago(selected.inserted_at)} ago
                           </div>
                         </div>
+                        <button onClick={() => dismiss(selected)} className="flex shrink-0 items-center gap-1 self-start rounded-md border px-2 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-foreground">
+                          <Trash2 className="size-3" /> Dismiss
+                        </button>
                       </div>
                       <p className="mt-3 text-sm leading-relaxed">{d.title}{d.detail && <span className="text-muted-foreground"> — {d.detail}</span>}</p>
                     </div>
@@ -256,7 +305,13 @@ function VariantAHeader() {
                     Mark all as read
                   </button>
                 </div>
-                <div className="max-h-[28rem] overflow-y-auto">
+                <div
+                  className="max-h-[28rem] overflow-y-auto"
+                  onScroll={(ev) => {
+                    const el = ev.currentTarget;
+                    if (el.scrollHeight - el.scrollTop - el.clientHeight < 80) feed.loadMore();
+                  }}
+                >
                   {feed.entries.length === 0 && <p className="p-6 text-center text-sm text-muted-foreground">You're all caught up.</p>}
                   {feed.entries.map((e) => {
                     const d = describe(e);
@@ -274,6 +329,10 @@ function VariantAHeader() {
                       </div>
                     );
                   })}
+                  {feed.loadingMore && <p className="py-3 text-center text-xs text-muted-foreground">Loading older…</p>}
+                  {!feed.hasMore && feed.entries.length > 0 && (
+                    <p className="py-3 text-center text-xs text-muted-foreground">That's everything</p>
+                  )}
                 </div>
               </>
             )}
@@ -520,10 +579,13 @@ export function PrototypeFeedSwitcher() {
           <button className="rounded bg-amber-400 px-2 py-0.5 font-bold text-zinc-900 disabled:opacity-50" disabled={fetcher.state !== "idle"}>
             {fetcher.state !== "idle" ? "…" : "Send to me"}
           </button>
+          <button name="count" value="25" className="rounded bg-zinc-700 px-2 py-0.5 disabled:opacity-50" disabled={fetcher.state !== "idle"}>
+            ×25 mixed
+          </button>
         </fetcher.Form>
       </div>
       <div className="text-white/60">
-        unseen {feed.meta.unseen_count} · unread {feed.meta.unread_count} · total {feed.meta.total_count}
+        unseen {feed.meta.unseen_count} · unread {feed.meta.unread_count} · total {feed.meta.total_count} · loaded {feed.entries.length}
         {feed.log[0] && <> · last: {feed.log[0]}</>}
       </div>
     </div>
