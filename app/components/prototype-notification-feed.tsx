@@ -131,6 +131,22 @@ function describe(e: Entry) {
   }
 }
 
+function openLabel(kind: string) {
+  switch (kind) {
+    case "refund-approved":
+    case "refund-declined":
+      return "Go to course";
+    case "refund-requested":
+      return "Review Refund Request";
+    case "seat-claimed":
+      return "View team";
+    case "new-enrollment":
+      return "View students";
+    default:
+      return "Go to discussion";
+  }
+}
+
 function ago(iso: string) {
   const s = (Date.now() - new Date(iso).getTime()) / 1000;
   if (s < 60) return "just now";
@@ -189,9 +205,7 @@ function VariantAHeader() {
       <button onClick={toggle} className="relative ml-auto rounded-md p-1.5 text-sidebar-foreground/70 hover:bg-sidebar-accent" title="Notifications">
         <Bell className="size-4" />
         {feed.meta.unseen_count > 0 && (
-          <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-red-500 px-1 text-[10px] font-bold leading-4 text-white">
-            {feed.meta.unseen_count > 9 ? "9+" : feed.meta.unseen_count}
-          </span>
+          <span className="absolute right-1 top-1 size-2 rounded-full bg-red-500 ring-2 ring-sidebar" />
         )}
       </button>
       {isOpen && (
@@ -204,31 +218,33 @@ function VariantAHeader() {
                 const Icon = d.icon;
                 return (
                   <div>
-                    <div className="flex items-center gap-2 border-b px-2 py-2">
-                      <button onClick={() => setSelectedId(null)} className="rounded p-1 hover:bg-accent" title="Back">
-                        <ChevronLeft className="size-4" />
+                    <div className="flex items-center justify-between border-b px-2 py-1.5">
+                      <button onClick={() => setSelectedId(null)} className="flex items-center gap-1 rounded px-1 py-1 text-sm text-muted-foreground hover:bg-accent hover:text-foreground">
+                        <ChevronLeft className="size-4" /> Notifications
                       </button>
-                      <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <Icon className="size-3.5" /> {d.group} · {new Date(selected.inserted_at).toLocaleString()}
-                      </span>
+                      <button onClick={() => dismiss(selected)} title="Dismiss" className="rounded p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground">
+                        <X className="size-4" />
+                      </button>
                     </div>
-                    <div className="space-y-3 p-4">
-                      <div className="flex items-start gap-3">
+                    <div className="p-4">
+                      <div className="flex items-center gap-3">
                         <Initial name={d.actor} />
-                        <p className="text-sm font-semibold leading-snug">{d.title}</p>
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium">{d.actor ?? "Cadence"}</div>
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <Icon className="size-3" /> {d.group} · {ago(selected.inserted_at)} ago
+                          </div>
+                        </div>
                       </div>
-                      {d.detail && <p className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">{d.detail}</p>}
+                      <p className="mt-3 text-sm leading-relaxed">{d.title}{d.detail && <span className="text-muted-foreground"> — {d.detail}</span>}</p>
                     </div>
-                    <div className="flex justify-between border-t px-4 py-2.5">
-                      <button onClick={() => dismiss(selected)} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-                        <X className="size-3.5" /> Dismiss
-                      </button>
-                      {selected.data.url && (
-                        <button onClick={() => { close(); navigate(selected.data.url); }} className="rounded-md bg-primary px-3 py-1 text-sm font-medium text-primary-foreground">
-                          Open →
+                    {selected.data.url && (
+                      <div className="px-4 pb-4">
+                        <button onClick={() => { close(); navigate(selected.data.url); }} className="w-full rounded-md bg-primary py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+                          {openLabel(selected.data.kind)} →
                         </button>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </div>
                 );
               })()
