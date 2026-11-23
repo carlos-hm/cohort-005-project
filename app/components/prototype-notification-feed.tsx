@@ -159,13 +159,30 @@ function useOpen() {
 
 // ─── Variant A: Bell popover ───────────────────────────────────────────────
 
+// Bell + compact one-liners. Clicking a row opens its detail inside the popover and marks
+// it read; the detail has "Open" (go to the thing) and "Dismiss". Rows also dismiss on hover.
 function VariantAHeader() {
   const feed = useFeed();
-  const open = useOpen();
+  const navigate = useNavigate();
   const [isOpen, setOpen] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected = feed.entries.find((e) => e.id === selectedId) ?? null;
+  const close = () => {
+    setOpen(false);
+    setSelectedId(null);
+  };
   const toggle = () => {
-    if (!isOpen) feed.markSeen(); // opening the feed = seen; the badge clears
-    setOpen(!isOpen);
+    if (isOpen) return close();
+    feed.markSeen(); // opening the feed = seen; the badge clears
+    setOpen(true);
+  };
+  const select = (e: Entry) => {
+    if (!e.read_at) feed.markRead(e); // opening the detail = read
+    setSelectedId(e.id);
+  };
+  const dismiss = (e: Entry) => {
+    feed.dismiss(e); // Knock archive; no toast, no undo
+    setSelectedId(null);
   };
   return (
     <>
@@ -179,28 +196,71 @@ function VariantAHeader() {
       </button>
       {isOpen && (
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="fixed inset-0 z-40" onClick={close} />
           <div className="fixed left-52 top-3 z-50 w-96 overflow-hidden rounded-lg border bg-popover text-popover-foreground shadow-xl">
-            <div className="flex items-center justify-between border-b px-4 py-2.5">
-              <span className="text-sm font-semibold">Notifications</span>
-              <button onClick={feed.markAllRead} className="text-xs text-muted-foreground hover:text-foreground">
-                Mark all as read
-              </button>
-            </div>
-            <div className="max-h-[28rem] overflow-y-auto">
-              {feed.entries.length === 0 && <p className="p-6 text-center text-sm text-muted-foreground">You're all caught up.</p>}
-              {feed.entries.map((e) => {
-                const d = describe(e);
+            {selected ? (
+              (() => {
+                const d = describe(selected);
+                const Icon = d.icon;
                 return (
-                  <button key={e.id} onClick={() => open(e, () => setOpen(false))} className={cn("flex w-full items-start gap-3 px-4 py-2.5 text-left hover:bg-accent", !e.read_at && "bg-primary/5")}>
-                    <Initial name={d.actor} />
-                    <span className="flex-1 text-sm leading-snug">{d.title}</span>
-                    <span className="shrink-0 text-xs text-muted-foreground">{ago(e.inserted_at)}</span>
-                    <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", !e.read_at ? "bg-blue-500" : "bg-transparent")} />
-                  </button>
+                  <div>
+                    <div className="flex items-center gap-2 border-b px-2 py-2">
+                      <button onClick={() => setSelectedId(null)} className="rounded p-1 hover:bg-accent" title="Back">
+                        <ChevronLeft className="size-4" />
+                      </button>
+                      <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <Icon className="size-3.5" /> {d.group} · {new Date(selected.inserted_at).toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="space-y-3 p-4">
+                      <div className="flex items-start gap-3">
+                        <Initial name={d.actor} />
+                        <p className="text-sm font-semibold leading-snug">{d.title}</p>
+                      </div>
+                      {d.detail && <p className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">{d.detail}</p>}
+                    </div>
+                    <div className="flex justify-between border-t px-4 py-2.5">
+                      <button onClick={() => dismiss(selected)} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+                        <X className="size-3.5" /> Dismiss
+                      </button>
+                      {selected.data.url && (
+                        <button onClick={() => { close(); navigate(selected.data.url); }} className="rounded-md bg-primary px-3 py-1 text-sm font-medium text-primary-foreground">
+                          Open →
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 );
-              })}
-            </div>
+              })()
+            ) : (
+              <>
+                <div className="flex items-center justify-between border-b px-4 py-2.5">
+                  <span className="text-sm font-semibold">Notifications</span>
+                  <button onClick={feed.markAllRead} className="text-xs text-muted-foreground hover:text-foreground">
+                    Mark all as read
+                  </button>
+                </div>
+                <div className="max-h-[28rem] overflow-y-auto">
+                  {feed.entries.length === 0 && <p className="p-6 text-center text-sm text-muted-foreground">You're all caught up.</p>}
+                  {feed.entries.map((e) => {
+                    const d = describe(e);
+                    return (
+                      <div key={e.id} className={cn("group relative flex w-full items-start gap-3 px-4 py-2.5 hover:bg-accent", !e.read_at && "bg-primary/5")}>
+                        <button onClick={() => select(e)} className="flex flex-1 items-start gap-3 text-left">
+                          <Initial name={d.actor} />
+                          <span className="flex-1 text-sm leading-snug">{d.title}</span>
+                          <span className="shrink-0 text-xs text-muted-foreground group-hover:invisible">{ago(e.inserted_at)}</span>
+                        </button>
+                        <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", !e.read_at ? "bg-blue-500" : "bg-transparent")} />
+                        <button onClick={() => dismiss(e)} title="Dismiss" className="absolute right-8 top-2.5 hidden rounded p-0.5 text-muted-foreground hover:bg-background hover:text-foreground group-hover:block">
+                          <X className="size-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
           </div>
         </>
       )}
@@ -356,7 +416,7 @@ export function NotificationsPage() {
 // ─── Wiring + floating switcher ────────────────────────────────────────────
 
 const VARIANTS = [
-  { key: "A", name: "Bell popover" },
+  { key: "A", name: "Bell + detail" },
   { key: "B", name: "Inbox drawer" },
   { key: "C", name: "Notifications page" },
 ];
