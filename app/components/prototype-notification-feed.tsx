@@ -324,7 +324,7 @@ function VariantAHeader() {
                         </button>
                         <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", !e.read_at ? "bg-blue-500" : "bg-transparent")} />
                         <button onClick={() => dismiss(e)} title="Dismiss" className="absolute right-8 top-2.5 hidden rounded p-0.5 text-muted-foreground hover:bg-background hover:text-foreground group-hover:block">
-                          <X className="size-3.5" />
+                          <Trash2 className="size-3.5" />
                         </button>
                       </div>
                     );
