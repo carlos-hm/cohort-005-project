@@ -72,6 +72,8 @@ async function seed() {
 
   // Drop and recreate tables for a clean seed
   sqlite.exec(`
+    DROP TABLE IF EXISTS bookmarks;
+    DROP TABLE IF EXISTS notes;
     DROP TABLE IF EXISTS comments;
     DROP TABLE IF EXISTS course_ratings;
     DROP TABLE IF EXISTS video_watch_events;
@@ -1999,6 +2001,53 @@ This course is still in draft while the cluster examples are rewritten against t
 
   console.log(
     `Created ${countRows(schema.comments)} lesson comments across ${countRows(schema.comments, isNull(schema.comments.parentId))} threads.`
+  );
+
+  // ─── Bookmarks and Notes ───
+  // Private to each Student, so only enrolled Students get them, and only on
+  // lessons in their own courses. Emma has both kinds across two courses, so
+  // /saved shows two Course names and newest-first ordering. One of Emma's
+  // Notes was edited after it was written, and one holds Markdown characters
+  // so the page shows them as typed. Olivia has a single Bookmark; Sophia a
+  // single Note. James and Liam have none, for an empty Saved page.
+
+  db.insert(schema.bookmarks)
+    .values([
+      { userId: students[0].id, lessonId: course1LessonIds[7], createdAt: daysAgo(20) },
+      { userId: students[0].id, lessonId: course1LessonIds[12], createdAt: daysAgo(8) },
+      { userId: students[0].id, lessonId: course2LessonIds[5], createdAt: daysAgo(2) },
+      { userId: students[2].id, lessonId: course1LessonIds[2], createdAt: daysAgo(12) },
+    ])
+    .run();
+
+  db.insert(schema.notes)
+    .values([
+      {
+        userId: students[0].id,
+        lessonId: course1LessonIds[7],
+        body: "Optional params go last. A function type is just (args) => return.\nRewatch the overloads bit before the quiz.",
+        createdAt: daysAgo(20),
+        updatedAt: daysAgo(4),
+      },
+      {
+        userId: students[0].id,
+        lessonId: course2LessonIds[5],
+        body: "# Middleware order matters\n* auth before routes\n* error handler last, with 4 args",
+        createdAt: daysAgo(2),
+        updatedAt: daysAgo(2),
+      },
+      {
+        userId: students[4].id,
+        lessonId: course1LessonIds[1],
+        body: "Install Node 20 before the next lesson.",
+        createdAt: daysAgo(6),
+        updatedAt: daysAgo(6),
+      },
+    ])
+    .run();
+
+  console.log(
+    `Created ${countRows(schema.bookmarks)} bookmarks and ${countRows(schema.notes)} notes.`
   );
 
   // ─── Lesson Progress ───
